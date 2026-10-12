@@ -34,7 +34,10 @@ jobs:
       - name: 读取上游版本
         id: version
         shell: bash
-        run: echo "sha=$(git -C \"$RUNNER_TEMP/upstream\" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          sha="$(git -C "$RUNNER_TEMP/upstream" rev-parse HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "上游：${sha:0:7}"
 
       - name: 比较已发布版本
         id: compare
