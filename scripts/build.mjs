@@ -74,12 +74,16 @@ function injectPwa(html, version) {
 <link rel="manifest" href="./manifest.webmanifest">
 <meta name="application-name" content="我的齐民要术">
 <style>
+  #qimin-install{position:fixed;right:16px;bottom:18px;z-index:9998;min-height:46px;border:0;border-radius:999px;padding:11px 18px;background:#315c49;color:#fff;font:600 14px/1.35 system-ui,sans-serif;box-shadow:0 8px 28px #0004;cursor:pointer}
+  #qimin-install[hidden],#qimin-install-help[hidden]{display:none}
+  #qimin-install-help{position:fixed;right:16px;bottom:76px;z-index:9998;width:min(82vw,330px);border:1px solid #315c4966;border-radius:12px;padding:10px 13px;background:#fff;color:#26352e;font:13px/1.5 system-ui,sans-serif;box-shadow:0 8px 28px #0003}
+  .dark #qimin-install-help{background:#1d2823;color:#eef5f1}
   #qimin-update{position:fixed;left:50%;bottom:18px;z-index:9999;transform:translateX(-50%);width:min(92vw,420px);padding:0;border:0;background:transparent}
   #qimin-update[hidden]{display:none}
   #qimin-update button{width:100%;min-height:48px;border:0;border-radius:14px;padding:12px 18px;background:#315c49;color:#fff;font:600 15px/1.35 system-ui,sans-serif;box-shadow:0 8px 28px #0004;cursor:pointer}
   .qimin-build-meta{max-width:900px;margin:22px auto;padding:12px 18px;color:#666;font:12px/1.65 system-ui,sans-serif;text-align:center}
   .qimin-build-meta a{color:inherit}
-  @media print{#qimin-update,.qimin-build-meta{display:none!important}}
+  @media print{#qimin-install,#qimin-install-help,#qimin-update,.qimin-build-meta{display:none!important}}
 </style>
 <!-- qimin-pwa:end -->
 `;
@@ -102,9 +106,45 @@ function injectPwa(html, version) {
 <div id="qimin-update" role="status" aria-live="polite" hidden>
   <button type="button">发现新版本，点击更新</button>
 </div>
+<button id="qimin-install" type="button" hidden>安装到手机</button>
+<div id="qimin-install-help" role="status" aria-live="polite" hidden>
+  请使用安卓 Chrome 打开本页，再点右上角菜单 → 添加到主屏幕。
+</div>
 <script>
 window.__QIMIN_BUILD__=${safeMetadata};
 (() => {
+  const installButton = document.getElementById("qimin-install");
+  const installHelp = document.getElementById("qimin-install-help");
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const isStandalone = matchMedia("(display-mode: standalone)").matches;
+  let installPrompt;
+
+  if (isAndroid && !isStandalone) installButton.hidden = false;
+  window.addEventListener("beforeinstallprompt", (event) => {
+    if (!isAndroid) return;
+    event.preventDefault();
+    installPrompt = event;
+    installButton.hidden = false;
+  });
+  installButton.addEventListener("click", async () => {
+    if (!installPrompt) {
+      installHelp.hidden = false;
+      window.setTimeout(() => { installHelp.hidden = true; }, 8000);
+      return;
+    }
+    installButton.disabled = true;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    installPrompt = undefined;
+    installButton.disabled = false;
+    if (choice.outcome === "accepted") installButton.hidden = true;
+  });
+  window.addEventListener("appinstalled", () => {
+    installPrompt = undefined;
+    installButton.hidden = true;
+    installHelp.hidden = true;
+  });
+
   if (!("serviceWorker" in navigator)) return;
   const notice = document.getElementById("qimin-update");
   const button = notice.querySelector("button");
@@ -187,6 +227,16 @@ try {
   });
   const stats = sourceStats(upstream);
   const syncedAt = new Date().toISOString();
+  let appCommit = process.env.APP_COMMIT || "";
+  if (!appCommit) {
+    try {
+      appCommit = run("git", ["rev-parse", "HEAD"], { cwd: ROOT, capture: true });
+    } catch {
+      appCommit = "local";
+    }
+  }
+  const appShortCommit = /^[0-9a-f]{7,40}$/iu.test(appCommit) ? appCommit.slice(0, 7) : "local";
+  const cacheVersion = `${shortCommit}-${appShortCommit}`;
 
   stageDir = resolve(ROOT, `.tmp-dist-${process.pid}`);
   rmSync(stageDir, { recursive: true, force: true });
@@ -200,6 +250,9 @@ try {
     upstreamCommit: commit,
     upstreamShortCommit: shortCommit,
     upstreamCommitDate: commitDate,
+    appCommit,
+    appShortCommit,
+    cacheVersion,
     syncedAt,
     chapters: stats.chapters,
     entries: stats.entries,
@@ -221,7 +274,7 @@ try {
     "./icons/icon-maskable-512.png",
   ];
   const sw = readFileSync(resolve(PUBLIC, "sw-template.js"), "utf8")
-    .replaceAll("__CACHE_VERSION__", shortCommit)
+    .replaceAll("__CACHE_VERSION__", cacheVersion)
     .replace("__PRECACHE_JSON__", JSON.stringify(precache, null, 2));
   writeFileSync(resolve(stageDir, "sw.js"), sw);
   rmSync(upstreamHtml, { force: true });

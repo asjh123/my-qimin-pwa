@@ -59,6 +59,9 @@ check(/@media\s+print/u.test(html), "页面缺少打印样式");
 check(html.includes('rel="manifest" href="./manifest.webmanifest"'), "页面未正确引用Manifest");
 check(html.includes('register("./sw.js")'), "页面未注册Service Worker");
 check(html.includes("发现新版本，点击更新"), "页面缺少新版提示");
+check(html.includes('id="qimin-install"') && html.includes("安装到手机"), "页面缺少安卓安装按钮");
+check(html.includes('window.addEventListener("beforeinstallprompt"'), "安装按钮没有接入浏览器安装事件");
+check(html.includes("请使用安卓 Chrome 打开本页"), "安装事件不可用时缺少操作提示");
 check(html.includes('worker.postMessage({ type: "SKIP_WAITING" })'), "更新按钮未通知新Service Worker激活");
 check(html.includes("if (reloadAfterActivation) location.reload()"), "新版激活后页面不会刷新");
 check(html.includes("我的齐民要术"), "页面缺少项目名称");
@@ -87,7 +90,8 @@ for (const [file, expected] of [
   check(dimensions.width === expected && dimensions.height === expected, `${file}尺寸错误`);
 }
 
-check(sw.includes(`qimin-${version.upstreamShortCommit}`), "Service Worker缓存版本与上游提交不一致");
+check(version.cacheVersion === `${version.upstreamShortCommit}-${version.appShortCommit}`, "版本文件中的缓存版本错误");
+check(sw.includes(`qimin-${version.cacheVersion}`), "Service Worker缓存版本与上游及应用提交不一致");
 check(sw.includes('event.data?.type === "SKIP_WAITING"'), "Service Worker缺少受控更新消息");
 check(!/https:\/\//u.test(sw), "Service Worker不应缓存或请求外部地址");
 for (const asset of ["./index.html", "./manifest.webmanifest", "./version.json", "./icons/icon-192.png"]) {

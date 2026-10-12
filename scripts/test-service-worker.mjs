@@ -83,7 +83,7 @@ async function waitable(listener, extra = {}) {
 const normal = environment();
 await waitable(normal.listeners.get("install"));
 const namesAfterInstall = [...normal.stores.keys()];
-const current = namesAfterInstall.find((name) => /^qimin-[0-9a-f]{7}$/u.test(name));
+const current = namesAfterInstall.find((name) => /^qimin-[0-9a-f]{7}-(?:[0-9a-f]{7}|local)$/u.test(name));
 check(current, "安装阶段没有创建提交编号缓存");
 check(normal.stores.get(current).has("./index.html"), "离线首页没有完整预缓存");
 check(normal.stores.has("qimin-old"), "安装完成前不应删除旧缓存");

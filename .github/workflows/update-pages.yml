@@ -50,18 +50,23 @@ jobs:
           else
             live_url="https://${owner}.github.io/${repo}/version.json"
           fi
-          live_sha="$(curl -fsSL --max-time 15 "${live_url}?check=${GITHUB_RUN_ID}" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).upstreamCommit||'')}catch{}})" || true)"
-          current_sha="${{ steps.version.outputs.sha }}"
-          if [[ -n "$live_sha" && "$live_sha" == "$current_sha" ]]; then
+          live_versions="$(curl -fsSL --max-time 15 "${live_url}?check=${GITHUB_RUN_ID}" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);console.log(j.upstreamCommit||'');console.log(j.appCommit||'')}catch{}})" || true)"
+          live_upstream="$(sed -n '1p' <<< "$live_versions")"
+          live_app="$(sed -n '2p' <<< "$live_versions")"
+          current_upstream="${{ steps.version.outputs.sha }}"
+          current_app="$GITHUB_SHA"
+          if [[ -n "$live_upstream" && "$live_upstream" == "$current_upstream" && "$live_app" == "$current_app" ]]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "上游无变化：${current_sha:0:7}"
+            echo "内容与应用均无变化：${current_upstream:0:7} / ${current_app:0:7}"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "准备发布：${current_sha:0:7}"
+            echo "准备发布：${current_upstream:0:7} / ${current_app:0:7}"
           fi
 
       - name: 生成图标与阅读器
         if: steps.compare.outputs.changed == 'true'
+        env:
+          APP_COMMIT: ${{ github.sha }}
         run: |
           node scripts/generate-icons.mjs
           node scripts/build.mjs --upstream "$RUNNER_TEMP/upstream"
