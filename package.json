@@ -1,0 +1,19 @@
+{
+  "name": "my-qimin-pwa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "《我的齐民要术》安卓极简 PWA 构建与自动更新工具",
+  "scripts": {
+    "icons": "node scripts/generate-icons.mjs",
+    "build": "node scripts/build.mjs",
+    "verify": "node scripts/verify.mjs",
+    "test:sw": "node scripts/test-service-worker.mjs",
+    "test": "npm run verify && npm run test:sw",
+    "serve": "node scripts/serve.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

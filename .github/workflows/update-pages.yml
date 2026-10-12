@@ -1,0 +1,91 @@
+name: 更新并发布安卓 PWA
+
+on:
+  schedule:
+    # 每周一北京时间 10:17（GitHub 使用 UTC，繁忙时可能延迟）
+    - cron: "17 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qimin-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+      upstream_sha: ${{ steps.version.outputs.sha }}
+    steps:
+      - name: 检出项目
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "22"
+
+      - name: 浅克隆原作者仓库
+        run: git clone --depth 1 --quiet https://github.com/eternity4719/HowToLiveBetter.git "$RUNNER_TEMP/upstream"
+
+      - name: 读取上游版本
+        id: version
+        shell: bash
+        run: echo "sha=$(git -C \"$RUNNER_TEMP/upstream\" rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: 比较已发布版本
+        id: compare
+        shell: bash
+        run: |
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          repo="${GITHUB_REPOSITORY#*/}"
+          if [[ "${repo,,}" == "${owner}.github.io" ]]; then
+            live_url="https://${owner}.github.io/version.json"
+          else
+            live_url="https://${owner}.github.io/${repo}/version.json"
+          fi
+          live_sha="$(curl -fsSL --max-time 15 "${live_url}?check=${GITHUB_RUN_ID}" 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).upstreamCommit||'')}catch{}})" || true)"
+          current_sha="${{ steps.version.outputs.sha }}"
+          if [[ -n "$live_sha" && "$live_sha" == "$current_sha" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "上游无变化：${current_sha:0:7}"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "准备发布：${current_sha:0:7}"
+          fi
+
+      - name: 生成图标与阅读器
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          node scripts/generate-icons.mjs
+          node scripts/build.mjs --upstream "$RUNNER_TEMP/upstream"
+
+      - name: 验证构建结果
+        if: steps.compare.outputs.changed == 'true'
+        run: |
+          node scripts/verify.mjs --upstream "$RUNNER_TEMP/upstream"
+          node scripts/test-service-worker.mjs
+
+      - name: 上传 Pages 产物
+        if: steps.compare.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: dist
+
+  deploy:
+    if: needs.build.outputs.changed == 'true'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 发布到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
