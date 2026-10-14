@@ -8,8 +8,10 @@
     "icons": "node scripts/generate-icons.mjs",
     "build": "node scripts/build.mjs",
     "verify": "node scripts/verify.mjs",
+    "test:history": "node scripts/test-update-history.mjs",
+    "test:browser": "node scripts/test-browser.mjs",
     "test:sw": "node scripts/test-service-worker.mjs",
-    "test": "npm run verify && npm run test:sw",
+    "test": "npm run verify && npm run test:history && npm run test:sw",
     "serve": "node scripts/serve.mjs"
   },
   "engines": {

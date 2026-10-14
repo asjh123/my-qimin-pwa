@@ -10,6 +10,18 @@
   "orientation": "portrait-primary",
   "background_color": "#f4efe4",
   "theme_color": "#315c49",
+  "shortcuts": [
+    {
+      "name": "打开目录",
+      "short_name": "目录",
+      "url": "./?action=toc"
+    },
+    {
+      "name": "搜索内容",
+      "short_name": "搜索",
+      "url": "./?action=search"
+    }
+  ],
   "icons": [
     {
       "src": "./icons/icon-192.png",

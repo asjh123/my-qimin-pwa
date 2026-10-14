@@ -86,6 +86,8 @@ const namesAfterInstall = [...normal.stores.keys()];
 const current = namesAfterInstall.find((name) => /^qimin-[0-9a-f]{7}-(?:[0-9a-f]{7}|local)$/u.test(name));
 check(current, "安装阶段没有创建提交编号缓存");
 check(normal.stores.get(current).has("./index.html"), "离线首页没有完整预缓存");
+check(normal.stores.get(current).has("./update-history.json"), "更新历史没有预缓存");
+check(normal.stores.get(current).has("./qimin-runtime.js"), "增强功能脚本没有预缓存");
 check(normal.stores.has("qimin-old"), "安装完成前不应删除旧缓存");
 
 await waitable(normal.listeners.get("activate"));

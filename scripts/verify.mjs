@@ -37,6 +37,8 @@ for (const relative of [
   "manifest.webmanifest",
   "sw.js",
   "version.json",
+  "update-history.json",
+  "qimin-runtime.js",
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/icon-maskable-512.png",
@@ -48,7 +50,9 @@ const htmlPath = resolve(DIST, "index.html");
 const html = readFileSync(htmlPath, "utf8");
 const manifest = JSON.parse(readFileSync(resolve(DIST, "manifest.webmanifest"), "utf8"));
 const version = JSON.parse(readFileSync(resolve(DIST, "version.json"), "utf8"));
+const history = JSON.parse(readFileSync(resolve(DIST, "update-history.json"), "utf8"));
 const sw = readFileSync(resolve(DIST, "sw.js"), "utf8");
+const runtime = readFileSync(resolve(DIST, "qimin-runtime.js"), "utf8");
 
 check(statSync(htmlPath).size > 200_000, "dist/index.html 过小，可能不是完整离线版");
 check(html.includes("window.__CORPUS__"), "页面没有内联官方离线正文");
@@ -57,13 +61,19 @@ check(html.includes('id="sidebar"') && html.includes('data-dim="grade"'), "页�
 check(html.includes('id="theme"'), "页面缺少明暗模式");
 check(/@media\s+print/u.test(html), "页面缺少打印样式");
 check(html.includes('rel="manifest" href="./manifest.webmanifest"'), "页面未正确引用Manifest");
-check(html.includes('register("./sw.js")'), "页面未注册Service Worker");
-check(html.includes("发现新版本，点击更新"), "页面缺少新版提示");
-check(html.includes('id="qimin-install"') && html.includes("安装到手机"), "页面缺少安卓安装按钮");
-check(html.includes('window.addEventListener("beforeinstallprompt"'), "安装按钮没有接入浏览器安装事件");
-check(html.includes("请使用安卓 Chrome 打开本页"), "安装事件不可用时缺少操作提示");
-check(html.includes('worker.postMessage({ type: "SKIP_WAITING" })'), "更新按钮未通知新Service Worker激活");
-check(html.includes("if (reloadAfterActivation) location.reload()"), "新版激活后页面不会刷新");
+check(runtime.includes('register("./sw.js")'), "页面未注册Service Worker");
+check(html.includes("发现新版本") && html.includes("更新到新版本") && html.includes("稍后再说"), "页面缺少受控新版提示");
+check(html.includes('id="qimin-install"') && html.includes("安装到手机桌面"), "页面缺少安卓安装按钮");
+check(runtime.includes('addEventListener("beforeinstallprompt"'), "安装按钮没有接入浏览器安装事件");
+check(html.includes("这不是下载文件") && html.includes("安卓 Chrome"), "安装事件不可用时缺少准确指引");
+check(runtime.includes('worker.postMessage({ type: "SKIP_WAITING" })'), "更新按钮未通知新Service Worker激活");
+check(runtime.includes("if (reloadAfterActivation) location.reload()"), "新版激活后页面不会刷新");
+check(html.includes('id="qimin-toc-nav"') && html.includes('id="qimin-toc-dialog"'), "页面缺少明确目录入口");
+check(html.includes("继续上次阅读") && html.includes("从第一章开始") && html.includes("搜索内容"), "页面缺少开始阅读操作");
+check(runtime.includes('document.getElementById(saved?.entryId)') && runtime.includes("qimin-reading-position-v1"), "阅读位置没有使用稳定锚点记录与恢复");
+check(runtime.includes('$$("#list .sec-block")') && runtime.includes('$$(".card", section)'), "目录没有从实际章节DOM动态生成");
+check(runtime.includes("text.value =") && !runtime.includes("innerHTML"), "更新内容必须通过安全文本方式渲染");
+check(html.includes("我已知晓") && runtime.includes("qimin-acknowledged-release-v1"), "页面缺少更新确认机制");
 check(html.includes("我的齐民要术"), "页面缺少项目名称");
 check(html.includes("CC BY 4.0"), "页面缺少CC BY 4.0署名");
 check(html.includes(version.upstreamCommit), "页面缺少完整上游提交编号");
@@ -76,6 +86,7 @@ check(manifest.name === "我的齐民要术", "Manifest名称错误");
 check(manifest.start_url === "./" && manifest.scope === "./", "Manifest必须使用相对start_url和scope");
 check(manifest.display === "standalone", "Manifest display必须为standalone");
 check(manifest.orientation === "portrait-primary", "Manifest方向必须为portrait-primary");
+check(Array.isArray(manifest.shortcuts) && manifest.shortcuts.some((item) => item.url === "./?action=toc") && manifest.shortcuts.some((item) => item.url === "./?action=search"), "Manifest目录或搜索快捷方式无效");
 check(Array.isArray(manifest.icons) && manifest.icons.length === 3, "Manifest必须声明三个图标");
 for (const icon of manifest.icons) {
   check(icon.src.startsWith("./") && !icon.src.startsWith("/"), `图标路径必须兼容仓库子目录：${icon.src}`);
@@ -91,10 +102,24 @@ for (const [file, expected] of [
 }
 
 check(version.cacheVersion === `${version.upstreamShortCommit}-${version.appShortCommit}`, "版本文件中的缓存版本错误");
+check(version.releaseId === version.cacheVersion, "发布编号与缓存版本不一致");
+check(history.schemaVersion === 1 && history.currentReleaseId === version.releaseId, "更新历史与当前版本不对应");
+check(Array.isArray(history.records) && history.records.length <= 52, "更新历史格式或保留数量错误");
+check(new Set(history.records.map((item) => item.releaseId)).size === history.records.length, "更新历史存在重复版本");
+for (const record of history.records) {
+  check(record.releaseId && typeof record.complete === "boolean", "更新记录缺少版本或完整性标志");
+  for (const key of ["addedEntries", "removedEntries", "changedEntries"]) {
+    check(Array.isArray(record[key]), `更新记录 ${key} 不是数组`);
+    for (const entry of record[key]) {
+      check(Object.keys(entry).every((name) => ["section", "number", "chapter", "title"].includes(name)), "更新记录包含正文或非必要字段");
+      check(JSON.stringify(entry).length < 500, "更新记录疑似泄漏完整正文");
+    }
+  }
+}
 check(sw.includes(`qimin-${version.cacheVersion}`), "Service Worker缓存版本与上游及应用提交不一致");
 check(sw.includes('event.data?.type === "SKIP_WAITING"'), "Service Worker缺少受控更新消息");
 check(!/https:\/\//u.test(sw), "Service Worker不应缓存或请求外部地址");
-for (const asset of ["./index.html", "./manifest.webmanifest", "./version.json", "./icons/icon-192.png"]) {
+for (const asset of ["./index.html", "./manifest.webmanifest", "./version.json", "./update-history.json", "./qimin-runtime.js", "./icons/icon-192.png"]) {
   check(sw.includes(asset), `Service Worker未预缓存${asset}`);
 }
 
@@ -107,6 +132,8 @@ if (upstream) {
 
 const automationText = [
   readFileSync(resolve(ROOT, "scripts/build.mjs"), "utf8"),
+  readFileSync(resolve(ROOT, "scripts/update-history.mjs"), "utf8"),
+  readFileSync(resolve(ROOT, "public/qimin-runtime.js"), "utf8"),
   readFileSync(resolve(ROOT, ".github/workflows/update-pages.yml"), "utf8"),
 ].join("\n");
 check(!/api\.openai\.com|anthropic\.com|generativelanguage\.googleapis\.com/iu.test(automationText), "自动更新流程包含AI接口");
